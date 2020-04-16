@@ -1,0 +1,91 @@
+version: '3.4'
+
+services:
+  financialtransactionscore:
+    build: ./financial-transaction-score
+    ports:
+      - "8090:8090"  
+    networks: 
+      - webnet_2
+
+  financialtransactionbusiness:
+    build: ./financial-transaction-business
+    ports:
+      - "8081:8081"
+    depends_on:
+      - postgres
+      - financialtransactionscore
+    networks: 
+      - webnet_2
+    environment: 
+      spring.datasource.url: jdbc:postgresql://postgres:5432/ftm
+      spring.jpa.hibernate.ddl-auto: create
+
+
+  financialtransactionredis:
+    build: ./ftm-redis
+    ports:
+      - "8060:8060"
+    depends_on:
+      - redis
+      - financialtransactionbusiness      
+    networks: 
+      - webnet_2
+    environment: 
+      spring.redis.host: redis
+      url-base.business: http://financialtransactionbusiness:8081/
+
+
+
+  # financialtransactionoperations:
+  #   build: ./financial-transaction-operations
+  #   ports:
+  #     - "8082:8082"
+  #   depends_on:
+  #     - redis
+  #     - financialtransactionbusiness      
+  #   networks: 
+  #     - webnet_2
+  #   environment: 
+  #     url-base.business: http://localhost:8081/
+  #     url-base.redis: http://localhost:8080/
+  #     url-base.score: http://localhost:8090/
+            
+  redis:
+    image: redis
+    networks: 
+      - webnet_2
+
+  postgres:
+    container_name: postgres_container
+    image: postgres
+    environment:     
+      POSTGRES_PASSWORD: admin
+      POSTGRES_USER: postgres
+      POSTGRES_DB: ftm
+
+    volumes:
+        - postgres:/data/postgres      
+    ports:
+      - "5432:5432"
+    networks:
+      - webnet_2
+    restart: unless-stopped      
+
+  # mongodb:
+  #   image: mongo:latest
+  #   environment:
+  #     MONGO_INITDB_ROOT_USERNAME: root
+  #     MONGO_INITDB_ROOT_PASSWORD: rootpassword
+  #   ports:
+  #     - 27017:27017
+  #   volumes:
+  #     - mongodb_data_container:/data/db    
+
+volumes:
+  postgres:
+  #mongodb_data_container:
+
+networks: 
+  webnet_2:    
+    # external: true
