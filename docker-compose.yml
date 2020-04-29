@@ -1,12 +1,14 @@
 version: '3.4'
 
 services:
+
   financialtransactionscore:
     build: ./financial-transaction-score
     ports:
       - "8090:8090"  
     networks: 
       - webnet_2
+
 
   financialtransactionbusiness:
     build: ./financial-transaction-business
@@ -18,8 +20,10 @@ services:
     networks: 
       - webnet_2
     environment: 
+      SPRING_RABBITMQ_HOST: rabbitmq
       spring.datasource.url: jdbc:postgresql://postgres:5432/ftm
-      spring.jpa.hibernate.ddl-auto: create
+      # spring.jpa.hibernate.ddl-auto: create
+
 
 
   financialtransactionredis:
@@ -36,56 +40,93 @@ services:
       url-base.business: http://financialtransactionbusiness:8081/
 
 
-
-  # financialtransactionoperations:
-  #   build: ./financial-transaction-operations
-  #   ports:
-  #     - "8082:8082"
-  #   depends_on:
-  #     - redis
-  #     - financialtransactionbusiness      
-  #   networks: 
-  #     - webnet_2
-  #   environment: 
-  #     url-base.business: http://localhost:8081/
-  #     url-base.redis: http://localhost:8080/
-  #     url-base.score: http://localhost:8090/
-            
+  financialtransactionoperations:
+    build: ./financial-transaction-operations
+    ports:
+      - "8082:8082"
+    depends_on:
+      - financialtransactionscore
+      - financialtransactionbusiness
+      - financialtransactionredis
+      - rabbitmq
+    networks: 
+      - webnet_2
+    environment: 
+      SPRING_RABBITMQ_HOST: rabbitmq
+      topic.exchange.name: ftm-exchange
+      queueName: ClientTransactionQueue      
+      spring.data.mongodb.uri: mongodb+srv://admin:admin@cluster0-drvjh.mongodb.net/test?retryWrites=true&w=majority
+      spring.data.mongodb.database: ftm
+      url-base.business: http://financialtransactionbusiness:8081/
+      url-base.redis: http://financialtransactionredis:8060/
+      url-base.score: http://financialtransactionscore:8090/
+      
+  
+  financialtransactionproxy:
+    build: ./financial-transaction-proxy
+    ports:
+      - "8085:8085"
+    depends_on:
+      - financialtransactionbusiness
+      - financialtransactionredis
+      - rabbitmq
+    networks: 
+      - webnet_2
+    environment: 
+      SPRING_RABBITMQ_HOST: rabbitmq
+      topic.exchange.name: ftm-exchange
+      queueName: ClientTransactionQueue
+      url-base.business: http://financialtransactionbusiness:8081/
+      url-base.redis: http://financialtransactionredis:8060/
+  
+          
   redis:
     image: redis
     networks: 
       - webnet_2
 
+
   postgres:
-    container_name: postgres_container
+    container_name: postgres
     image: postgres
     environment:     
       POSTGRES_PASSWORD: admin
       POSTGRES_USER: postgres
       POSTGRES_DB: ftm
-
     volumes:
-        - postgres:/data/postgres      
+        - postgres_volume:/var/lib/postgresql/data
+        - ./scripts:/scripts
+        #- ./scripts/init-user-db.sh:/docker-entrypoint-initdb.d/init-user-db.sh
+        - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
     networks:
-      - webnet_2
-    restart: unless-stopped      
+      - webnet_2 
 
-  # mongodb:
-  #   image: mongo:latest
-  #   environment:
-  #     MONGO_INITDB_ROOT_USERNAME: root
-  #     MONGO_INITDB_ROOT_PASSWORD: rootpassword
-  #   ports:
-  #     - 27017:27017
-  #   volumes:
-  #     - mongodb_data_container:/data/db    
+
+  mongodb:
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
+    ports:
+      - 27017:27017
+    volumes:
+      - mongodb_data_container:/data/db
+
+
+  rabbitmq:
+    image: rabbitmq:3.5.3-management
+    ports:
+      - "7000:15672"
+      - "7001:5672"
+    networks: 
+      - webnet_2
+  
 
 volumes:
-  postgres:
-  #mongodb_data_container:
+  postgres_volume:
+  mongodb_data_container:
 
 networks: 
-  webnet_2:    
-    # external: true
+  webnet_2:
